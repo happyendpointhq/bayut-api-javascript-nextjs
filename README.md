@@ -1,6 +1,6 @@
 # Bayut API Javascript NextJs
 
-JavaScript and Next.js examples for the [Bayut Property Data API](https://rapidapi.com/happyendpoint/api/bayut14/) - search Dubai and UAE property listings, build location autocomplete, fetch agent data, and display off-plan projects.
+JavaScript and Next.js examples for the [Bayut Property Data API](https://rapidapi.com/happyendpoint/api/uae-real-estate3/) - search Dubai and UAE property listings, build location autocomplete, fetch agent data, and display off-plan projects.
 
 Built by [Happy Endpoint](https://happyendpoint.com) - docs at [bayutapi.dev](https://bayutapi.dev).
 
@@ -10,7 +10,7 @@ Built by [Happy Endpoint](https://happyendpoint.com) - docs at [bayutapi.dev](ht
 
 The Bayut API gives you programmatic access to UAE property data - listings for sale and rent, off-plan projects, agents, agencies, and transaction history. No scraping, no proxies, clean JSON.
 
-Available on RapidAPI: https://rapidapi.com/happyendpoint/api/bayut14/
+Available on RapidAPI: https://rapidapi.com/happyendpoint/api/uae-real-estate3/
 
 ---
 
@@ -35,10 +35,10 @@ For plain Node.js, use a `.env` file with `dotenv`.
 Put this in `lib/bayut.js` or `lib/bayut.ts`:
 
 ```javascript
-const BASE_URL = "https://bayut14.p.rapidapi.com";
+const BASE_URL = "https://uae-real-estate3.p.rapidapi.com";
 
 const defaultHeaders = {
-  "x-rapidapi-host": "bayut14.p.rapidapi.com",
+  "x-rapidapi-host": "uae-real-estate3.p.rapidapi.com",
   "x-rapidapi-key": process.env.RAPIDAPI_KEY
 };
 
@@ -664,7 +664,7 @@ Use `/autocomplete` to find IDs for any other area.
 
 ## Links
 
-- API on RapidAPI: https://rapidapi.com/happyendpoint/api/bayut14/
+- API on RapidAPI: https://rapidapi.com/happyendpoint/api/uae-real-estate3/
 - Full documentation: https://bayutapi.dev
 - Happy Endpoint: https://happyendpoint.com
 - Twitter: https://x.com/happyendpointhq
