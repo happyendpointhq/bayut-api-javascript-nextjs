@@ -1,7 +1,6 @@
 node_modules/
 .next/
 out/
-dist/
 build/
 .env
 .env.local
@@ -12,3 +11,4 @@ pnpm-debug.log*
 .DS_Store
 coverage/
 *.tsbuildinfo
+next-env.d.ts

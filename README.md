@@ -1,679 +1,252 @@
-# Bayut API Javascript NextJs
+# Bayut API Next.js Example
 
-JavaScript and Next.js examples for the [Bayut Property Data API](https://rapidapi.com/happyendpoint/api/uae-real-estate3/) - search Dubai and UAE property listings, build location autocomplete, fetch agent data, and display off-plan projects.
+A working Next.js 15 App Router application built on the
+[Bayut Property Data API](https://rapidapi.com/happyendpoint/api/uae-real-estate3/):
+debounced location autocomplete, property search, and result cards, in
+TypeScript.
 
-Built by [Happy Endpoint](https://happyendpoint.com) - docs at [bayutapi.dev](https://bayutapi.dev).
-
----
-
-## What is the Bayut API?
-
-The Bayut API gives you programmatic access to UAE property data - listings for sale and rent, off-plan projects, agents, agencies, and transaction history. No scraping, no proxies, clean JSON.
-
-Available on RapidAPI: https://rapidapi.com/happyendpoint/api/uae-real-estate3/
+Built and maintained by [Happy Endpoint](https://happyendpoint.com). Full API
+reference at [bayutapi.dev](https://bayutapi.dev).
 
 ---
 
-## Setup
+## What is in here
 
-Get your API key by subscribing on RapidAPI (free plan available).
+| Path | What it is |
+|---|---|
+| `lib/bayut.ts` | Typed API client with retries, timeouts, and error handling |
+| `app/api/locations/route.ts` | Route handler proxying location autocomplete |
+| `app/api/properties/route.ts` | Route handler proxying property search |
+| `components/LocationSearch.tsx` | Debounced autocomplete with request cancellation |
+| `components/PropertyCard.tsx` | Listing card with AED formatting and unit conversion |
+| `app/page.tsx` | The search page tying it together |
 
-For Next.js projects, add to `.env.local`:
-
-```
-RAPIDAPI_KEY=your_key_here
-```
-
-For plain Node.js, use a `.env` file with `dotenv`.
-
----
-
-## Examples
-
-### Fetch wrapper (reusable)
-
-Put this in `lib/bayut.js` or `lib/bayut.ts`:
-
-```javascript
-const BASE_URL = "https://uae-real-estate3.p.rapidapi.com";
-
-const defaultHeaders = {
-  "x-rapidapi-host": "uae-real-estate3.p.rapidapi.com",
-  "x-rapidapi-key": process.env.RAPIDAPI_KEY
-};
-
-async function bayutFetch(path, params = {}) {
-  const url = new URL(`${BASE_URL}${path}`);
-
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) {
-      url.searchParams.set(key, value);
-    }
-  });
-
-  const response = await fetch(url.toString(), {
-    headers: defaultHeaders,
-    next: { revalidate: 300 } // Next.js cache - 5 minutes
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || `API error: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-export async function searchLocations(query, langs = "en") {
-  const data = await bayutFetch("/autocomplete", { query, langs });
-  return data.data.locations;
-}
-
-export async function searchProperties({
-  purpose = "for-sale",
-  locationId,
-  propertyType,
-  rooms,
-  baths,
-  priceMin,
-  priceMax,
-  areaMin,
-  areaMax,
-  completionStatus,
-  isFurnished,
-  amenities,
-  sortOrder = "popular",
-  page = 1,
-  langs = "en"
-} = {}) {
-  const data = await bayutFetch("/search-property", {
-    purpose,
-    location_ids: locationId,
-    property_type: propertyType,
-    rooms,
-    baths,
-    price_min: priceMin,
-    price_max: priceMax,
-    area_min: areaMin,
-    area_max: areaMax,
-    completion_status: completionStatus,
-    is_furnished: isFurnished,
-    amenities,
-    sort_order: sortOrder,
-    page,
-    langs
-  });
-  return data.data;
-}
-
-export async function getPropertyDetails(externalId, langs = "en") {
-  const data = await bayutFetch("/property-details", {
-    external_id: externalId,
-    langs
-  });
-  return data.data;
-}
-
-export async function searchOffPlan({
-  locationId,
-  completionPercentage,
-  maxPreHandover,
-  priceMax,
-  rooms,
-  page = 1
-} = {}) {
-  const data = await bayutFetch("/search-new-projects", {
-    location_ids: locationId,
-    property_type: "residential",
-    completion_percentage: completionPercentage,
-    pre_handover_payment: maxPreHandover,
-    price_max: priceMax,
-    rooms,
-    sort_order: "latest",
-    page
-  });
-  return data.data;
-}
-
-export async function getTransactions({
-  purpose = "for-sale",
-  locationId,
-  timePeriod = "12m",
-  categoryIds,
-  completionStatus,
-  page = 1
-} = {}) {
-  const data = await bayutFetch("/transactions", {
-    purpose,
-    location_ids: locationId,
-    time_period: timePeriod,
-    category_ids: categoryIds,
-    completion_status: completionStatus,
-    sort: "date_desc",
-    page
-  });
-  return data.data;
-}
-
-export async function searchAgents({
-  locationId,
-  purpose = "for-sale",
-  category = "residential",
-  page = 1
-} = {}) {
-  const data = await bayutFetch("/agent-search", {
-    location_ids: locationId,
-    purpose,
-    category,
-    page,
-    langs: "en"
-  });
-  return data.data;
-}
-```
+This builds and runs. `npm run build` produces a clean production build, and
+both route handlers return live data.
 
 ---
 
-### Next.js API routes
+## Quick start
 
-Keep your RapidAPI key server-side. Never expose it in client components.
+```bash
+git clone https://github.com/happyendpointhq/bayut-api-javascript-nextjs
+cd bayut-api-javascript-nextjs
+npm install
 
-**app/api/locations/route.js**
+cp .env.example .env.local
+# then add your key to .env.local
 
-```javascript
-import { NextResponse } from "next/server";
-import { searchLocations } from "@/lib/bayut";
-
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const query = searchParams.get("query") || "";
-
-  if (query.length < 2) {
-    return NextResponse.json([]);
-  }
-
-  try {
-    const locations = await searchLocations(query);
-    return NextResponse.json(locations);
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
+npm run dev
 ```
 
-**app/api/properties/route.js**
+Open http://localhost:3000, search for an area, and pick it from the dropdown.
 
-```javascript
-import { NextResponse } from "next/server";
-import { searchProperties } from "@/lib/bayut";
-
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-
-  try {
-    const data = await searchProperties({
-      purpose: searchParams.get("purpose") || "for-sale",
-      locationId: searchParams.get("locationId"),
-      propertyType: searchParams.get("propertyType"),
-      rooms: searchParams.get("rooms"),
-      priceMin: searchParams.get("priceMin"),
-      priceMax: searchParams.get("priceMax"),
-      sortOrder: searchParams.get("sortOrder") || "popular",
-      page: Number(searchParams.get("page")) || 1
-    });
-    return NextResponse.json(data);
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-```
+Get a key, free tier available, at
+https://rapidapi.com/happyendpoint/api/uae-real-estate3/
 
 ---
 
-### Location search component
+## Keep the key on the server
 
-```jsx
-"use client";
+This matters more than anything else in this repo.
 
-import { useState, useCallback, useRef } from "react";
-
-export function LocationSearch({ onSelect, placeholder = "Search area..." }) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const debounceRef = useRef(null);
-
-  const search = useCallback((value) => {
-    setQuery(value);
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    if (value.length < 2) {
-      setResults([]);
-      setOpen(false);
-      return;
-    }
-
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/locations?query=${encodeURIComponent(value)}`);
-        const data = await res.json();
-        setResults(data);
-        setOpen(true);
-      } catch (err) {
-        console.error("Location search failed:", err);
-      } finally {
-        setLoading(false);
-      }
-    }, 300);
-  }, []);
-
-  function handleSelect(location) {
-    setQuery(location.name?.en || "");
-    setResults([]);
-    setOpen(false);
-    onSelect(location);
-  }
-
-  return (
-    <div style={{ position: "relative" }}>
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => search(e.target.value)}
-        placeholder={placeholder}
-        style={{ width: "100%", padding: "10px 14px", fontSize: "16px" }}
-      />
-      {loading && <span style={{ position: "absolute", right: 12, top: 12 }}>...</span>}
-      {open && results.length > 0 && (
-        <ul style={{
-          position: "absolute",
-          top: "100%",
-          left: 0,
-          right: 0,
-          background: "#fff",
-          border: "1px solid #ddd",
-          borderRadius: "6px",
-          listStyle: "none",
-          margin: 0,
-          padding: 0,
-          zIndex: 100,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
-        }}>
-          {results.map((loc) => (
-            <li
-              key={loc.externalID}
-              onClick={() => handleSelect(loc)}
-              style={{
-                padding: "10px 14px",
-                cursor: "pointer",
-                display: "flex",
-                justifyContent: "space-between",
-                borderBottom: "1px solid #f0f0f0"
-              }}
-            >
-              <span>{loc.name?.en}</span>
-              <span style={{ color: "#999", fontSize: "13px" }}>
-                {loc.adCount?.toLocaleString()} listings
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 ```
+RAPIDAPI_KEY=your_key_here          # correct, server only
+NEXT_PUBLIC_RAPIDAPI_KEY=...        # wrong, ships to every visitor
+```
+
+Anything prefixed `NEXT_PUBLIC_` is inlined into the client bundle and readable
+by anyone who opens devtools. A leaked RapidAPI key gets used, and you pay for
+the usage.
+
+The pattern here is that `lib/bayut.ts` is only imported by route handlers, which
+run on the server. Client components call `/api/properties` on your own origin,
+never the Bayut API directly.
 
 ---
 
-### Property card component
-
-```jsx
-export function PropertyCard({ property }) {
-  const title = property.title?.en || "Property";
-  const price = property.price;
-  const rooms = property.rooms;
-  const baths = property.baths;
-  const areaSqm = property.area;
-  const areaSqft = areaSqm ? Math.round(areaSqm * 10.764) : null;
-  const photo = property.coverPhoto?.url;
-  const purpose = property.purpose;
-  const isVerified = property.isVerified;
-  const location = property.location;
-  const neighbourhood = location?.find((l) => l.level === 2)?.name?.en;
-
-  return (
-    <article style={{
-      border: "1px solid #e0e0e0",
-      borderRadius: "10px",
-      overflow: "hidden",
-      background: "#fff"
-    }}>
-      {photo && (
-        <img
-          src={photo}
-          alt={title}
-          style={{ width: "100%", height: "200px", objectFit: "cover" }}
-        />
-      )}
-      <div style={{ padding: "14px" }}>
-        {isVerified && (
-          <span style={{
-            background: "#e8f5e9",
-            color: "#2e7d32",
-            fontSize: "11px",
-            padding: "2px 8px",
-            borderRadius: "4px",
-            marginBottom: "8px",
-            display: "inline-block"
-          }}>
-            Verified
-          </span>
-        )}
-        <h3 style={{ fontSize: "15px", marginBottom: "6px", lineHeight: 1.4 }}>
-          {title}
-        </h3>
-        {neighbourhood && (
-          <p style={{ color: "#666", fontSize: "13px", marginBottom: "8px" }}>
-            {neighbourhood}
-          </p>
-        )}
-        <p style={{ fontSize: "18px", fontWeight: "bold", color: "#1a1a1a", marginBottom: "8px" }}>
-          AED {price?.toLocaleString()}
-          {purpose === "for-rent" && <span style={{ fontSize: "13px", fontWeight: "normal" }}>/year</span>}
-        </p>
-        <div style={{ display: "flex", gap: "16px", color: "#555", fontSize: "13px" }}>
-          {rooms !== null && <span>{rooms === 0 ? "Studio" : `${rooms} bed`}</span>}
-          {baths && <span>{baths} bath</span>}
-          {areaSqft && <span>{areaSqft.toLocaleString()} sqft</span>}
-        </div>
-      </div>
-    </article>
-  );
-}
-```
-
----
-
-### Property listing page (Next.js App Router)
-
-```jsx
-// app/properties/page.jsx
-import { searchProperties } from "@/lib/bayut";
-import { PropertyCard } from "@/components/PropertyCard";
-
-export default async function PropertiesPage({ searchParams }) {
-  const {
-    purpose = "for-sale",
-    locationId,
-    propertyType,
-    rooms,
-    priceMin,
-    priceMax,
-    page = "1"
-  } = searchParams;
-
-  const data = await searchProperties({
-    purpose,
-    locationId,
-    propertyType,
-    rooms,
-    priceMin,
-    priceMax,
-    page: Number(page)
-  });
-
-  return (
-    <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px" }}>
-      <h1 style={{ marginBottom: "8px" }}>
-        Properties {purpose === "for-sale" ? "for Sale" : "for Rent"}
-      </h1>
-      <p style={{ color: "#666", marginBottom: "24px" }}>
-        {data.total.toLocaleString()} properties found
-      </p>
-
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-        gap: "20px"
-      }}>
-        {data.properties.map((property) => (
-          <a
-            key={property.externalID}
-            href={`/property/${property.externalID}`}
-            style={{ textDecoration: "none", color: "inherit" }}
-          >
-            <PropertyCard property={property} />
-          </a>
-        ))}
-      </div>
-
-      {/* Pagination */}
-      <div style={{ marginTop: "32px", display: "flex", gap: "8px" }}>
-        {Number(page) > 1 && (
-          <a href={`?${new URLSearchParams({ ...searchParams, page: Number(page) - 1 })}`}>
-            Previous
-          </a>
-        )}
-        <span>Page {page} of {data.totalPages}</span>
-        {Number(page) < data.totalPages && (
-          <a href={`?${new URLSearchParams({ ...searchParams, page: Number(page) + 1 })}`}>
-            Next
-          </a>
-        )}
-      </div>
-    </main>
-  );
-}
-```
-
----
-
-### Property detail page
-
-```jsx
-// app/property/[id]/page.jsx
-import { getPropertyDetails } from "@/lib/bayut";
-import { notFound } from "next/navigation";
-
-export default async function PropertyPage({ params }) {
-  const property = await getPropertyDetails(params.id).catch(() => null);
-
-  if (!property) notFound();
-
-  const title = property.title?.en;
-  const price = property.price;
-  const rooms = property.rooms;
-  const baths = property.baths;
-  const areaSqm = property.area;
-  const areaSqft = areaSqm ? Math.round(areaSqm * 10.764) : null;
-  const description = property.description?.en;
-  const amenities = property.amenities || [];
-  const agent = property.ownerAgent;
-  const agency = property.agency;
-  const location = property.location;
-  const neighbourhood = location?.find((l) => l.level === 2)?.name?.en;
-
-  return (
-    <main style={{ maxWidth: "900px", margin: "0 auto", padding: "24px" }}>
-      <h1>{title}</h1>
-      {neighbourhood && <p style={{ color: "#666" }}>{neighbourhood}, Dubai</p>}
-
-      <p style={{ fontSize: "28px", fontWeight: "bold", margin: "16px 0" }}>
-        AED {price?.toLocaleString()}
-      </p>
-
-      <div style={{ display: "flex", gap: "24px", marginBottom: "24px" }}>
-        {rooms !== null && <span>{rooms === 0 ? "Studio" : `${rooms} Bedrooms`}</span>}
-        {baths && <span>{baths} Bathrooms</span>}
-        {areaSqft && <span>{areaSqft.toLocaleString()} sqft</span>}
-        <span>{property.completionStatus}</span>
-        <span>{property.furnishingStatus}</span>
-      </div>
-
-      {description && (
-        <div style={{ marginBottom: "24px" }}>
-          <h2>Description</h2>
-          <p style={{ whiteSpace: "pre-line" }}>{description}</p>
-        </div>
-      )}
-
-      {amenities.length > 0 && (
-        <div style={{ marginBottom: "24px" }}>
-          <h2>Amenities</h2>
-          <ul style={{ columns: 2, listStyle: "disc", paddingLeft: "20px" }}>
-            {amenities.map((a, i) => (
-              <li key={i}>{a.text}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {agent && (
-        <div style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "16px" }}>
-          <h2>Listed by</h2>
-          <p>{agent.name}</p>
-          {agency && <p style={{ color: "#666" }}>{agency.name}</p>}
-        </div>
-      )}
-    </main>
-  );
-}
-```
-
----
-
-### Fetch with error handling and retry
-
-```javascript
-async function fetchWithRetry(url, options, maxRetries = 3) {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const response = await fetch(url, options);
-
-      if (response.status === 429) {
-        // Rate limited - wait before retrying
-        const waitMs = Math.pow(2, attempt) * 1000;
-        console.warn(`Rate limited. Waiting ${waitMs}ms...`);
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
-        continue;
-      }
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.message || `HTTP ${response.status}`);
-      }
-
-      return response.json();
-    } catch (err) {
-      if (attempt === maxRetries - 1) throw err;
-      console.warn(`Attempt ${attempt + 1} failed: ${err.message}`);
-    }
-  }
-}
-```
-
----
-
-### TypeScript types
+## Using the client
 
 ```typescript
-// types/bayut.ts
+import { searchProperties, autocomplete, text, LOCATIONS } from '@/lib/bayut';
 
-export interface Location {
-  id: number;
-  externalID: string;
-  name: Record<string, string>;
-  slug: Record<string, string>;
-  level: number;
-  type: string;
-  path: string;
-  adCount: number;
+// Resolve an area name to a location ID
+const locations = await autocomplete('dubai marina');
+const locationId = locations[0].externalID;
+
+// Or use a verified constant
+const results = await searchProperties({
+  purpose: 'for-sale',
+  locationId: LOCATIONS.dubaiMarina,
+  propertyType: 'apartments',
+  rooms: '1',
+  priceMax: 1_500_000,
+});
+
+console.log(`${results.total} properties`);
+for (const property of results.properties) {
+  console.log(text(property.title), property.price);
 }
+```
 
-export interface Property {
-  id: string;
-  externalID: string;
-  title: Record<string, string>;
-  description?: Record<string, string>;
-  purpose: "for-sale" | "for-rent";
-  price: number;
-  rentFrequency?: string;
-  rooms: number;
-  baths: number;
-  area: number;
-  completionStatus: string;
-  furnishingStatus: string;
-  isVerified: boolean;
-  referenceNumber: string;
-  coverPhoto?: { url: string };
-  location?: Location[];
-  amenities?: Array<{ text: string }>;
-  ownerAgent?: Agent;
-  agency?: Agency;
-  geography?: { lat: number; lng: number };
-  createdAt: number;
-  updatedAt: number;
-}
+### Server component
 
-export interface Agent {
-  externalID: string;
-  name: string;
-  agency?: Agency;
-  languages?: string[];
-  listingCount?: number;
-}
+```tsx
+import { searchProperties, text, LOCATIONS } from '@/lib/bayut';
 
-export interface Agency {
-  externalID: string;
-  name: string;
-  listingCount?: number;
-}
+export default async function MarinaListings() {
+  const { properties } = await searchProperties({
+    locationId: LOCATIONS.dubaiMarina,
+    rooms: '1',
+  });
 
-export interface SearchResult {
-  properties: Property[];
-  total: number;
-  page: number;
-  totalPages: number;
-  hitsPerPage: number;
+  return (
+    <ul>
+      {properties.map((property) => (
+        <li key={property.externalID}>
+          {text(property.title)} - AED {property.price.toLocaleString()}
+        </li>
+      ))}
+    </ul>
+  );
 }
 ```
 
 ---
 
-## Common location IDs
+## Response shape notes
 
-| Area | externalID |
+The API is not consistent between endpoints, which is why `lib/bayut.ts` exports
+helpers rather than leaving you to parse raw responses.
+
+**`title` has two shapes.** `/search-property` returns `{title: {en: "..."}}`
+while `/property-details` returns `title` as a plain string. Use `text()`, which
+handles both.
+
+**`location` is a hierarchy array**, ordered by level: country, city, community,
+building. Use `locationPath()` to render it as `UAE > Dubai > Dubai Marina >
+Studio One Tower`.
+
+**`/property-details` is slow**, routinely over 30 seconds against sub-second
+search responses. The client raises its timeout automatically for that path.
+
+**Rental prices are annual.** `PropertyCard` appends `/year` when `purpose` is
+`for-rent` so the figure is not mistaken for a monthly rent.
+
+---
+
+## Verified location IDs
+
+Exported as `LOCATIONS` from `lib/bayut.ts`.
+
+| Area | ID |
 |---|---|
-| Dubai (whole emirate) | 1 |
-| Abu Dhabi (whole emirate) | 3 |
-| Dubai Marina | 5003 |
+| Dubai (whole emirate) | 5002 |
+| Abu Dhabi (whole emirate) | 6020 |
+| JVC | 5416 |
+| Business Bay | 5093 |
 | Downtown Dubai | 6901 |
-| Palm Jumeirah | 5002 |
-| Business Bay | 5460 |
-| JVC | 6388 |
-| JLT | 5006 |
-| Dubai Hills Estate | 11621 |
+| Dubai Marina | 5003 |
+| Dubai Hills Estate | 8288 |
+| JLT | 5152 |
+| Palm Jumeirah | 5460 |
 
-Use `/autocomplete` to find IDs for any other area.
-
----
-
-## Links
-
-- API on RapidAPI: https://rapidapi.com/happyendpoint/api/uae-real-estate3/
-- Full documentation: https://bayutapi.dev
-- Happy Endpoint: https://happyendpoint.com
-- Twitter: https://x.com/happyendpointhq
-- Email: happyendpointhq@gmail.com
-
-Need bulk Bayut data (100K+ records)? Email happyendpointhq@gmail.com
+A wrong location ID returns a **different area** rather than an error, so
+confirm any you add through `/autocomplete` rather than guessing.
 
 ---
 
-## License
+## Caching
 
-MIT
+Requests set `next: { revalidate: 300 }`, so Next caches responses for five
+minutes. Listings change often enough that indefinite caching would show stale
+prices, and often enough that no caching burns quota. Adjust in `lib/bayut.ts`
+to suit your plan.
+
+---
+
+## Deploying to Vercel
+
+1. Push your fork to GitHub
+2. Import it in Vercel
+3. Add `RAPIDAPI_KEY` as an environment variable, not prefixed `NEXT_PUBLIC_`
+4. Deploy
+
+The route handlers run as serverless functions, so the key stays server side.
+
+---
+
+## FAQ
+
+### Can I call the Bayut API directly from a client component?
+
+You can, but do not. It would require shipping the key to the browser. Use a
+route handler, as this example does.
+
+### Why is my search returning a different area?
+
+Almost certainly a wrong location ID. The API returns results for whatever ID
+you send rather than rejecting an unknown one. Use `/api/locations` to confirm.
+
+### Does this work with the Pages Router?
+
+The client in `lib/bayut.ts` does, unchanged. The route handlers would need
+rewriting as `pages/api` handlers, and `next: { revalidate }` has no effect
+outside the App Router.
+
+### Is there a Python version?
+
+Yes.
+[bayut-api-python-examples](https://github.com/happyendpointhq/bayut-api-python-examples).
+
+---
+
+## Using the API from Claude, Cursor, or another MCP client
+
+RapidAPI hosts an MCP server, so you can query this API from an AI assistant
+without writing code:
+
+```json
+{
+  "mcpServers": {
+    "Bayut UAE Real Estate": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://mcp.rapidapi.com",
+        "--header",
+        "x-api-host: uae-real-estate3.p.rapidapi.com",
+        "--header",
+        "x-api-key: YOUR_RAPIDAPI_KEY"
+      ]
+    }
+  }
+}
+```
+
+---
+
+## Related repos
+
+- [bayut-api](https://github.com/happyendpointhq/bayut-api) - full endpoint documentation
+- [bayut-api-python-examples](https://github.com/happyendpointhq/bayut-api-python-examples) - the same patterns in Python
+- [bayut-api-postman-collection](https://github.com/happyendpointhq/bayut-api-postman-collection) - try the endpoints without writing code
+- [dubai-rental-yield-calculator](https://github.com/happyendpointhq/dubai-rental-yield-calculator) - yields by area
+- [uae-real-estate-data-guide](https://github.com/happyendpointhq/uae-real-estate-data-guide) - every route to UAE property data
+
+---
+
+## About Happy Endpoint
+
+[Happy Endpoint](https://happyendpoint.com) builds and maintains real-time data
+APIs for property portals, retailers, and marketplaces. All APIs are available on
+RapidAPI with a free tier.
+
+- Catalogue: [happyendpoint.com/library](https://happyendpoint.com/library)
+- Datasets: [happyendpoint.com/datasets](https://happyendpoint.com/datasets)
+- Documentation: [docs.happyendpoint.com](https://docs.happyendpoint.com)
+- Contact: happyendpointhq@gmail.com
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
